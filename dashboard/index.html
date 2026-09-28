@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCCRS — Classroom Relocation Monitor</title>
+<style>
+  :root{
+    --bg: #0d1512;
+    --panel: #12201c;
+    --panel-line: #1f3229;
+    --text: #e8f3ed;
+    --text-dim: #7fa393;
+    --amber: #e8a33d;
+    --green: #4fd88a;
+    --red: #e05a5a;
+    --cyan: #4bc3d4;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family: 'Courier New', Consolas, Menlo, monospace;
+    padding: 24px 16px 60px;
+  }
+  .wrap{max-width: 780px; margin: 0 auto;}
+
+  header{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    border-bottom: 1px solid var(--panel-line);
+    padding-bottom: 14px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  header h1{
+    font-size: 18px;
+    letter-spacing: 0.02em;
+    margin:0;
+    font-weight: 700;
+  }
+  header .clock{
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+
+  .hero{
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .hero .label{color:var(--text-dim); font-size: 12px; margin-bottom: 6px;}
+  .hero .room{font-size: 30px; font-weight:700; color: var(--cyan);}
+  .hero .sub{font-size: 13px; color: var(--text-dim); margin-top: 6px;}
+  .state-pill{
+    display:inline-block;
+    margin-top: 10px;
+    padding: 3px 10px;
+    font-size: 12px;
+    border: 1px solid currentColor;
+  }
+  .ok{color:var(--green);}
+  .warn{color:var(--amber);}
+  .bad{color:var(--red);}
+
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  @media (max-width:640px){ .grid{grid-template-columns: 1fr;} }
+
+  .card{
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    padding: 14px;
+  }
+  .card.active{border-color: var(--cyan);}
+  .card .name{font-weight:700; font-size:14px; display:flex; justify-content:space-between;}
+  .card .row{
+    display:flex; justify-content:space-between;
+    font-size: 13px; color: var(--text-dim);
+    margin-top: 8px;
+  }
+  .card .row b{color:var(--text); font-weight: normal;}
+  .flag{font-size:11px; padding:1px 6px; border:1px solid currentColor;}
+
+  .log{
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    padding: 14px;
+  }
+  .log .label{color:var(--text-dim); font-size:12px; margin-bottom:10px;}
+  .log-entry{
+    font-size: 13px;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--panel-line);
+    color: var(--text-dim);
+  }
+  .log-entry:last-child{border-bottom:none;}
+  .log-entry .t{color: var(--cyan); margin-right: 8px;}
+  .log-entry.event{color: var(--text);}
+
+  footer{
+    margin-top: 20px;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align:center;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>SCCRS — Classroom Relocation Monitor</h1>
+    <div class="clock" id="clock">--:--:--</div>
+  </header>
+
+  <div class="hero">
+    <div class="label">CURRENT CLASS LOCATION</div>
+    <div class="room" id="activeRoomName">Room A</div>
+    <div class="sub" id="activeRoomStats">--</div>
+    <div class="state-pill ok" id="statePill">COMFORT OK</div>
+  </div>
+
+  <div class="grid" id="roomGrid"></div>
+
+  <div class="log">
+    <div class="label">EVENT LOG</div>
+    <div id="logList"></div>
+  </div>
+
+  <footer>
+    Standalone reference build — demonstrates the same decision logic as the ESP32 firmware.<br>
+    Full deployment connects directly via the ESP32's onboard web server over WiFi.
+  </footer>
+
+</div>
+
+<script>
+// Thresholds mirrored from firmware
+const TEMP_THRESHOLD = 34.0;
+const HUM_THRESHOLD = 70.0;
+const ROOM_NAMES = ["Room A", "Room B", "Room C"];
+
+function comfortScore(t, h){
+  let s = 100;
+  s -= Math.max(0, t - 26) * 4;
+  s -= Math.max(0, h - 50) * 0.8;
+  return Math.max(0, Math.min(100, s));
+}
+
+// Scripted demo timeline — mirrors the tested scenarios.
+// Each step: { rooms: [{t,h,occ}, ...], activeRoom, mitigation, event }
+const timeline = [
+  { rooms:[{t:24,h:40,o:false},{t:24,h:40,o:false},{t:29,h:52,o:false}], active:0, mit:false },
+  { rooms:[{t:43,h:40,o:false},{t:24,h:40,o:false},{t:29,h:52,o:false}], active:0, mit:true, event:"Room A: Discomfort detected. Mitigation started." },
+  { rooms:[{t:43,h:40,o:false},{t:24,h:40,o:true},{t:29,h:52,o:false}], active:0, mit:true },
+  { rooms:[{t:43,h:40,o:false},{t:24,h:40,o:false},{t:29,h:52,o:false}], active:1, mit:false, event:"Relocated: Room A -> Room B" },
+  { rooms:[{t:29,h:40,o:false},{t:52,h:40,o:false},{t:24,h:40,o:false}], active:1, mit:true, event:"Room B: Discomfort detected. Mitigation started." },
+  { rooms:[{t:29,h:40,o:false},{t:52,h:40,o:true},{t:24,h:40,o:false}], active:1, mit:true },
+  { rooms:[{t:29,h:40,o:false},{t:52,h:40,o:false},{t:24,h:40,o:false}], active:2, mit:false, event:"Relocated: Room B -> Room C" },
+  { rooms:[{t:29,h:40,o:false},{t:55,h:40,o:false},{t:60,h:40,o:false}], active:2, mit:true, event:"Room C: Discomfort detected. Mitigation started." },
+  { rooms:[{t:29,h:40,o:false},{t:55,h:40,o:false},{t:60,h:40,o:false}], active:2, mit:true, event:"No viable room — Alert Admin" },
+];
+
+let step = 0;
+let logEntries = [];
+const clockEl = document.getElementById('clock');
+const activeNameEl = document.getElementById('activeRoomName');
+const activeStatsEl = document.getElementById('activeRoomStats');
+const statePillEl = document.getElementById('statePill');
+const gridEl = document.getElementById('roomGrid');
+const logListEl = document.getElementById('logList');
+
+function timeString(){
+  const d = new Date();
+  return d.toTimeString().slice(0,8);
+}
+
+function render(){
+  const s = timeline[step];
+  const activeRoom = s.rooms[s.active];
+
+  activeNameEl.textContent = ROOM_NAMES[s.active];
+  activeStatsEl.textContent = `${activeRoom.t.toFixed(1)}C  ${activeRoom.h.toFixed(0)}%  IN USE`;
+
+  statePillEl.className = "state-pill " + (s.mit ? "warn" : "ok");
+  statePillEl.textContent = s.mit ? "MITIGATION ACTIVE" : "COMFORT OK";
+
+  gridEl.innerHTML = "";
+  s.rooms.forEach((r, i) => {
+    const isActive = i === s.active;
+    const uncomfortable = r.t >= TEMP_THRESHOLD || r.h >= HUM_THRESHOLD;
+    const card = document.createElement('div');
+    card.className = "card" + (isActive ? " active" : "");
+    const flag = isActive ? "IN USE" : (r.o ? "OCCUPIED" : "VACANT");
+    const flagColor = isActive ? "cyan" : (r.o ? "bad" : "ok");
+    card.innerHTML = `
+      <div class="name">${ROOM_NAMES[i]} <span class="flag ${flagColor}">${flag}</span></div>
+      <div class="row"><span>Temp</span><b>${r.t.toFixed(1)}&deg;C</b></div>
+      <div class="row"><span>Humidity</span><b>${r.h.toFixed(0)}%</b></div>
+      <div class="row"><span>Comfort score</span><b>${comfortScore(r.t,r.h).toFixed(0)}/100</b></div>
+      <div class="row"><span>Status</span><b style="color:${uncomfortable ? 'var(--red)' : 'var(--green)'}">${uncomfortable ? 'ABOVE THRESHOLD' : 'OK'}</b></div>
+    `;
+    gridEl.appendChild(card);
+  });
+
+  if (s.event) {
+    logEntries.push({ time: timeString(), msg: s.event });
+    if (logEntries.length > 8) logEntries.shift();
+  }
+  logListEl.innerHTML = logEntries.slice().reverse().map(e =>
+    `<div class="log-entry event"><span class="t">${e.time}</span>${e.msg}</div>`
+  ).join("") || `<div class="log-entry">No events yet</div>`;
+}
+
+function tick(){
+  clockEl.textContent = timeString();
+}
+setInterval(tick, 1000);
+tick();
+
+render();
+setInterval(() => {
+  step = (step + 1) % timeline.length;
+  render();
+}, 4000);
+</script>
+</body>
+</html>
