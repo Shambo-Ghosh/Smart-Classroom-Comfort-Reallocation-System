@@ -243,6 +243,14 @@ The system can be extended beyond the current prototype with:
 The long-term goal is to develop the system into a scalable **smart classroom and smart campus infrastructure platform**.
 
 ---
+# Contributing Members
+
+- Shambo Ghosh [ECE]
+- Sayani Naha [ECE]
+- Souvik Sil [ECE]
+- Ritirekha Sarkar [ECE]
+- Shraman Roy [EE]
+
 
 # License
 
