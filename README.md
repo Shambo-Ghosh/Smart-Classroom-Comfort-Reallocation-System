@@ -74,7 +74,7 @@ Each simulated classroom contains:
         |           |           |
      DHT22        DHT22        DHT22
      PIR          PIR          PIR
-     Fan LED      Fan LED      Fan LED
+     
 ```
 
 This architecture is used to demonstrate the system's core control logic in Wokwi.
@@ -121,7 +121,7 @@ The Master ESP32 acts as the central coordinator and communicates with the indiv
 
 Detailed information is available in:
 
-**[Real-World Implementation Documentation](./implementation/README.md)**
+**[Real-World Implementation Documentation](./implementation/implementation-README.md)**
 
 ---
 
